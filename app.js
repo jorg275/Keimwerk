@@ -143,8 +143,8 @@ function parseInput(text){
     totaalBruto += sec.bruto; totaalAftrek += sec.aftrek; totaalDeuren += sec.deurCount || 0; totaalRamen += sec.raamCount || 0; totaalPipe += sec.pipeCount || 0;
   });
 
-  let donkereBand = parseOptionalNumber(document.getElementById("donkereBand")?.value || "");
-  if(donkereBand === null){
+  let donkereBand = null;
+  {
     const match = text.match(/Strekkende meter donkere band totaal woning\s*:\s*([0-9]+(?:[.,][0-9]+)?)/i);
     if(match) donkereBand = parseOptionalNumber(match[1]);
   }
@@ -210,7 +210,6 @@ function saveProject(){
     naam: document.getElementById("naam").value.trim(),
     adres: document.getElementById("adres").value.trim(),
     extraOnderdelen: document.getElementById("extraOnderdelen").value.trim(),
-    donkereBand: document.getElementById("donkereBand").value.trim(),
     input: document.getElementById("input").value,
     datum: new Date().toLocaleString("nl-NL")
   };
@@ -228,7 +227,6 @@ function renderProjects(){
         <strong>${item.naam || "Zonder naam"}</strong>
         <div>${item.adres || ""}</div>
         ${item.extraOnderdelen ? `<div>${item.extraOnderdelen}</div>` : ""}
-        ${item.donkereBand ? `<div>Donkere band: ${item.donkereBand} m1</div>` : ""}
         <div>${item.datum}</div>
       </div>
       <div class="project-actions">
@@ -244,7 +242,6 @@ function openProject(id){
   document.getElementById("naam").value = item.naam || "";
   document.getElementById("adres").value = item.adres || "";
   document.getElementById("extraOnderdelen").value = item.extraOnderdelen || "";
-  document.getElementById("donkereBand").value = item.donkereBand || "";
   document.getElementById("input").value = item.input || "";
   processInput();
 }
@@ -274,6 +271,7 @@ async function makePdf(){
   const doc = new jsPDF({unit:"mm", format:"a4"});
   const blue = [31,95,153], dark = [24,53,79];
   const logoImg = await loadImageAsDataURL("logo.png");
+
   function addHeader(title, subtitle1, subtitle2, subtitle3){
     doc.setFont("helvetica","bold"); doc.setFontSize(22); doc.setTextColor(...dark); doc.text(title, 14, 20);
     doc.setFont("helvetica","normal"); doc.setFontSize(10);
@@ -285,8 +283,11 @@ async function makePdf(){
     doc.addImage(logoImg, "PNG", 210 - 14 - w, 12, w, h);
     doc.setDrawColor(180); doc.line(14, 48, 196, 48);
   }
+
+  // Pagina 1: alleen overzicht
   addHeader("GEVELBEREKENING", laatsteData.naam, laatsteData.adres, "Datum: " + laatsteData.datum);
   doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.text("Overzicht", 14, 58);
+
   const overviewBody = [
     ["Netto totaal", `${format2(laatsteData.totaalNetto)} m²`],
     ["Bruto totaal", `${format2(laatsteData.totaalBruto)} m²`],
@@ -297,20 +298,40 @@ async function makePdf(){
   ];
   if(laatsteData.donkereBand !== null) overviewBody.push(["Donkere band", `${format2(laatsteData.donkereBand)} m1`]);
   laatsteData.extraNames.forEach(name => overviewBody.push([name, ""]));
-  doc.autoTable({ startY:62, head:[["Omschrijving","Waarde"]], body:overviewBody, theme:"grid", headStyles:{fillColor:blue, halign:"left"}, styles:{font:"helvetica", fontSize:10, cellPadding:3} });
 
+  doc.autoTable({
+    startY:62,
+    head:[["Omschrijving","Waarde"]],
+    body:overviewBody,
+    theme:"grid",
+    headStyles:{fillColor:blue, halign:"left"},
+    styles:{font:"helvetica", fontSize:10, cellPadding:3}
+  });
+
+  // Vanaf pagina 2: gevelspecificatie
   for(let i=0; i<laatsteData.sectionNames.length; i++){
     const g = laatsteData.sectionNames[i];
     const sec = laatsteData.gevels[g];
-    if(i>0) doc.addPage();
-    if(i>0) addHeader("GEVELBEREKENING", laatsteData.naam, laatsteData.adres, "Datum: " + laatsteData.datum);
-    const yBase = i===0 ? doc.lastAutoTable.finalY + 20 : 60;
-    if(i===0){
-      doc.setFont("helvetica","bold"); doc.setFontSize(12); doc.text("Gevelspecificatie", 14, doc.lastAutoTable.finalY + 12);
+
+    doc.addPage();
+    addHeader("GEVELBEREKENING", laatsteData.naam, laatsteData.adres, "Datum: " + laatsteData.datum);
+
+    if(i === 0){
+      doc.setFont("helvetica","bold");
+      doc.setFontSize(12);
+      doc.text("Gevelspecificatie", 14, 58);
+      doc.setFontSize(11);
+      doc.text(g, 14, 66);
+      var startY = 70;
+    } else {
+      doc.setFont("helvetica","bold");
+      doc.setFontSize(11);
+      doc.text(g, 14, 58);
+      var startY = 62;
     }
-    doc.setFont("helvetica","bold"); doc.setFontSize(11); doc.text(g, 14, yBase);
+
     doc.autoTable({
-      startY: yBase + 4,
+      startY,
       head:[["Onderdeel","Waarde"]],
       body:[
         ["Bruto", `${format2(sec.bruto)} m²`],
@@ -326,11 +347,13 @@ async function makePdf(){
       headStyles:{fillColor:blue, halign:"left"},
       styles:{font:"helvetica", fontSize:10, cellPadding:3}
     });
+
     let rows = [];
     sec.muren.forEach(r => rows.push(["Muren", r.expr, `${format2(r.m2)} m²`]));
     sec.deuren.forEach(r => rows.push(["Deuren aftrek", r.expr, `${format2(r.m2)} m²`]));
     sec.ramen.forEach(r => rows.push(["Ramen aftrek", r.expr, `${format2(r.m2)} m²`]));
     if(!rows.length) rows.push(["-","-","-"]);
+
     doc.autoTable({
       startY: doc.lastAutoTable.finalY + 8,
       head:[["Type","Berekening","m²"]],
@@ -341,9 +364,11 @@ async function makePdf(){
       alternateRowStyles:{fillColor:[248,250,252]}
     });
   }
+
   const safeName = (laatsteData.naam || "project").replace(/[^a-z0-9-_]/gi, "_");
   doc.save(`gevelberekening_${safeName}.pdf`);
 }
+
 function processInput(){
   const text = document.getElementById("input").value.trim();
   if(!text) return;
