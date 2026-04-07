@@ -297,7 +297,6 @@ async function makePdf(){
     ["Totaal regenpijpen", `${laatsteData.totaalPipe}`],
   ];
   if(laatsteData.donkereBand !== null) overviewBody.push(["Donkere band", `${format2(laatsteData.donkereBand)} m1`]);
-  laatsteData.extraNames.forEach(name => overviewBody.push([name, ""]));
 
   doc.autoTable({
     startY:62,
