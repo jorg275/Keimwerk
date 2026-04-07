@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Keimwerken Gevelberekening</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div>
+        <h1>Keimwerken gevelberekening</h1><p class="sub">Versie 15</p>
+        <p class="sub">Plak jouw vaste opname of vul eerst het voorbeeld in. Deuren en ramen zijn nu los van elkaar.</p>
+      </div>
+      <img src="logo.png" alt="Keimwerken logo" class="logo" />
+    </header>
+
+    <section class="card">
+      <div class="grid2">
+        <label>
+          <span>Naam klant</span>
+          <input id="naam" type="text" placeholder="Bijv. Jansen" />
+        </label>
+        <label>
+          <span>Adres</span>
+          <input id="adres" type="text" placeholder="Bijv. Iras 9" />
+        </label>
+      </div>
+      <label style="display:block; margin-top:12px;">
+        <span>Extra onderdelen (optioneel, gescheiden met komma)</span>
+        <input id="extraOnderdelen" type="text" placeholder="Bijv. Garage, Tuinmuur" />
+      </label>
+      <label style="display:block; margin-top:12px;">
+        <span>Strekkende meter donkere band totaal woning (optioneel)</span>
+        <input id="donkereBand" type="text" placeholder="Bijv. 24,5" />
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Opname plakken</h2>
+      <textarea id="input" placeholder="Plak hier je gevelopname"></textarea>
+
+      <div class="button-row">
+        <button id="btnVerwerk">Verwerken</button>
+        <button id="btnPdf" class="secondary">PDF maken</button>
+        <button id="btnOpslaan" class="secondary">Project opslaan</button>
+      </div>
+
+      <details class="template-box">
+        <summary>Voorbeeldblok tonen om te kopiëren en op telefoon in te vullen</summary>
+        <p class="hint">Tik op <strong>Kopieer voorbeeld</strong>, vul het in op je telefoon en plak het daarna hierboven.</p>
+        <textarea id="templateText" readonly></textarea>
+        <div class="button-row">
+          <button id="btnKopieerTemplate" class="secondary">Kopieer voorbeeld</button>
+          <button id="btnPlaatsTemplate" class="secondary">Plaats voorbeeld in plakvak</button>
+        </div>
+      </details>
+
+      <div id="melding" class="melding"></div>
+    </section>
+
+    <section class="card">
+      <h2>Resultaat</h2>
+      <div id="resultaat" class="resultaat leeg">Nog niets verwerkt.</div>
+    </section>
+
+    <section class="card">
+      <h2>Opgeslagen projecten</h2>
+      <div id="projecten"></div>
+    </section>
+  </div>
+
+  <script src="app.js?v=15"></script>
+</body>
+</html>
