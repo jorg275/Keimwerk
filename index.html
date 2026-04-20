@@ -12,7 +12,7 @@
   <div class="app">
     <header class="topbar">
       <div>
-        <h1>Keimwerken gevelberekening</h1><p class="sub">Versie 21</p>
+        <h1>Keimwerken gevelberekening</h1><p class="sub">Versie 22</p>
         <p class="sub">Plak jouw vaste opname of vul eerst het voorbeeld in. Deuren en ramen zijn nu los van elkaar.</p>
       </div>
       <img src="logo.png" alt="Keimwerken logo" class="logo" />
@@ -50,7 +50,8 @@
 
     <section class="card">
       <h2>Opname plakken</h2>
-      <textarea id="input" placeholder="Plak hier je gevelopname"></textarea>
+      <textarea id="input" placeholder="Plak hier je gevelopname" spellcheck="false"></textarea>
+      <div id="inputFeedback" class="input-feedback" hidden></div>
 
       <div class="button-row">
         <button id="btnVerwerk">Verwerken</button>
@@ -82,6 +83,6 @@
     </section>
   </div>
 
-  <script src="app.js?v=21"></script>
+  <script src="app.js?v=22"></script>
 </body>
 </html>
