@@ -93,6 +93,17 @@ function parseMeasurementLine(line){
     const a = normalizeNumber(multMatch[1]), b = normalizeNumber(multMatch[2]), mult = multMatch[3] ? parseInt(multMatch[3], 10) : 1;
     return { expr: clean, m2: round2(a*b*mult) };
   }
+
+  const formula = clean.toLowerCase().replace(/,/g, ".").replace(/x/g, "*");
+  if(/^[0-9+*/().]+$/.test(formula) && /[*/+]/.test(formula)){
+    try{
+      const result = Function('"use strict"; return (' + formula + ');')();
+      if(Number.isFinite(result)){
+        return { expr: clean, m2: round2(result) };
+      }
+    } catch(e){}
+  }
+
   return null;
 }
 function createSection(name){
