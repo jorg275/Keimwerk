@@ -52,6 +52,31 @@ function getAllSectionNames(){ return [...BASIS_GEVELS, ...getExtraNames()]; }
 function normalizeNumber(str){ return parseFloat(String(str).replace(",", ".").trim()); }
 function round2(n){ return Math.round((n + Number.EPSILON) * 100) / 100; }
 function format2(n){ return round2(n).toFixed(2).replace(".", ","); }
+function debounce(fn, wait){
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), wait);
+  };
+}
+function escapeHtml(str){
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+function getAdresSamengesteld(){
+  const straat = (document.getElementById("adresZoek")?.value || "").trim();
+  const postcode = (document.getElementById("postcode")?.value || "").trim().toUpperCase();
+  const plaats = (document.getElementById("plaats")?.value || "").trim();
+  return [straat, [postcode, plaats].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+}
+function syncAdresHiddenField(){
+  const hidden = document.getElementById("adres");
+  if(hidden) hidden.value = getAdresSamengesteld();
+}
 function parseOptionalNumber(val){
   const s = String(val || "").trim().replace(",", ".");
   if(!s) return null;
@@ -103,7 +128,6 @@ function parseMeasurementLine(line){
       }
     } catch(e){}
   }
-
   return null;
 }
 function createSection(name){
@@ -162,7 +186,7 @@ function parseInput(text){
 
   return {
     naam: document.getElementById("naam").value.trim(),
-    adres: document.getElementById("adres").value.trim(),
+    adres: getAdresSamengesteld(),
     datum: new Date().toLocaleDateString("nl-NL"),
     extraNames: getExtraNames(),
     donkereBand,
@@ -216,11 +240,15 @@ function saveProject(){
   if(!laatsteData){ setMessage("Verwerk eerst de opname."); return; }
   const key = "keimwerken-projecten";
   const existing = JSON.parse(localStorage.getItem(key) || "[]");
+  syncAdresHiddenField();
   const item = {
     id: Date.now(),
     naam: document.getElementById("naam").value.trim(),
-    adres: document.getElementById("adres").value.trim(),
+    adres: getAdresSamengesteld(),
     extraOnderdelen: document.getElementById("extraOnderdelen").value.trim(),
+    straat: document.getElementById("adresZoek").value.trim(),
+    postcode: document.getElementById("postcode").value.trim(),
+    plaats: document.getElementById("plaats").value.trim(),
     input: document.getElementById("input").value,
     datum: new Date().toLocaleString("nl-NL")
   };
@@ -251,7 +279,10 @@ function openProject(id){
   const item = arr.find(x => x.id === id);
   if(!item) return;
   document.getElementById("naam").value = item.naam || "";
-  document.getElementById("adres").value = item.adres || "";
+  document.getElementById("adresZoek").value = item.straat || "";
+  document.getElementById("postcode").value = item.postcode || "";
+  document.getElementById("plaats").value = item.plaats || "";
+  syncAdresHiddenField();
   document.getElementById("extraOnderdelen").value = item.extraOnderdelen || "";
   document.getElementById("input").value = item.input || "";
   processInput();
@@ -377,13 +408,111 @@ async function makePdf(){
   doc.save(`gevelberekening_${safeName}.pdf`);
 }
 
+
+let actieveSuggesties = [];
+
+function hideSuggesties(){
+  const box = document.getElementById("adresSuggesties");
+  if(box){
+    box.hidden = true;
+    box.innerHTML = "";
+  }
+  actieveSuggesties = [];
+}
+function toonSuggesties(items){
+  const box = document.getElementById("adresSuggesties");
+  if(!box) return;
+  actieveSuggesties = items || [];
+  if(!items || !items.length){
+    hideSuggesties();
+    return;
+  }
+  box.innerHTML = items.map((item, index) => `
+    <button type="button" class="suggestion-item" data-index="${index}">
+      <strong>${escapeHtml(item.weergavenaam || "")}</strong>
+      <span>${escapeHtml(item.postcode || "")} ${escapeHtml(item.woonplaatsnaam || "")}</span>
+    </button>
+  `).join("");
+  box.hidden = false;
+}
+async function zoekAdresSuggesties(query){
+  const q = String(query || "").trim();
+  if(q.length < 4){
+    hideSuggesties();
+    return;
+  }
+  try{
+    const suggestUrl = "https://api.pdok.nl/bzk/locatieserver/search/v3_1/suggest?fq=type:adres&q=" + encodeURIComponent(q);
+    const suggestRes = await fetch(suggestUrl);
+    const suggestData = await suggestRes.json();
+    const docs = suggestData?.response?.docs || [];
+    const items = docs.slice(0, 8).map(doc => ({
+      id: doc.id,
+      weergavenaam: doc.weergavenaam || q
+    }));
+    if(!items.length){
+      hideSuggesties();
+      return;
+    }
+    const enriched = await Promise.all(items.map(async (item) => {
+      try{
+        const lookupUrl = "https://api.pdok.nl/bzk/locatieserver/search/v3_1/lookup?id=" + encodeURIComponent(item.id);
+        const lookupRes = await fetch(lookupUrl);
+        const lookupData = await lookupRes.json();
+        const detail = lookupData?.response?.docs?.[0] || {};
+        return {
+          ...item,
+          straatnaam: detail.straatnaam || "",
+          huisnummer: detail.huisnummer || "",
+          huisletter: detail.huisletter || "",
+          huisnummertoevoeging: detail.huisnummertoevoeging || "",
+          postcode: detail.postcode || "",
+          woonplaatsnaam: detail.woonplaatsnaam || ""
+        };
+      } catch(e){
+        return item;
+      }
+    }));
+    toonSuggesties(enriched);
+  } catch(e){
+    hideSuggesties();
+  }
+}
+function kiesAdresSuggestie(item){
+  if(!item) return;
+  const straat = [item.straatnaam, item.huisnummer, item.huisletter, item.huisnummertoevoeging].filter(Boolean).join(" ");
+  document.getElementById("adresZoek").value = straat || item.weergavenaam || "";
+  document.getElementById("postcode").value = item.postcode || "";
+  document.getElementById("plaats").value = item.woonplaatsnaam || "";
+  syncAdresHiddenField();
+  hideSuggesties();
+}
+
 function processInput(){
+  syncAdresHiddenField();
   const text = document.getElementById("input").value.trim();
   if(!text) return;
   laatsteData = parseInput(text);
   renderResult(laatsteData);
   document.getElementById("melding").textContent = "Berekening verwerkt.";
 }
+
+document.getElementById("adresZoek")?.addEventListener("input", debounce((e) => {
+  syncAdresHiddenField();
+  zoekAdresSuggesties(e.target.value);
+}, 250));
+document.getElementById("postcode")?.addEventListener("input", syncAdresHiddenField);
+document.getElementById("plaats")?.addEventListener("input", syncAdresHiddenField);
+document.getElementById("adresSuggesties")?.addEventListener("click", (e) => {
+  const btn = e.target.closest(".suggestion-item");
+  if(!btn) return;
+  const item = actieveSuggesties[Number(btn.dataset.index)];
+  kiesAdresSuggestie(item);
+});
+document.addEventListener("click", (e) => {
+  if(!e.target.closest(".address-lookup-wrap")) hideSuggesties();
+});
+
 document.getElementById("templateText").value = TEMPLATE_TEXT;
 document.getElementById("btnVerwerk").addEventListener("click", processInput);
 document.getElementById("btnPdf").addEventListener("click", makePdf);

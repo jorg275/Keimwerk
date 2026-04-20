@@ -45,3 +45,39 @@ th{color:#36536b}
   .topbar{align-items:flex-start;flex-direction:column}
   .logo{width:210px;max-width:60vw}
 }
+
+
+.address-lookup-wrap{position:relative;}
+.suggestions{
+  position:absolute;
+  top:100%;
+  left:0;
+  right:0;
+  z-index:30;
+  margin-top:6px;
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:12px;
+  box-shadow:0 10px 24px rgba(0,0,0,.08);
+  overflow:hidden;
+}
+.suggestion-item{
+  display:block;
+  width:100%;
+  padding:12px 14px;
+  text-align:left;
+  border:none;
+  border-bottom:1px solid var(--line);
+  border-radius:0;
+  background:#fff;
+  color:#1d2a36;
+  font-weight:600;
+}
+.suggestion-item:last-child{border-bottom:none;}
+.suggestion-item span{
+  display:block;
+  margin-top:3px;
+  color:#617282;
+  font-weight:400;
+}
+.suggestion-item:hover{background:#f8fafc;}

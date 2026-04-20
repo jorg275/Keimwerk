@@ -12,7 +12,7 @@
   <div class="app">
     <header class="topbar">
       <div>
-        <h1>Keimwerken gevelberekening</h1><p class="sub">Versie 20</p>
+        <h1>Keimwerken gevelberekening</h1><p class="sub">Versie 21</p>
         <p class="sub">Plak jouw vaste opname of vul eerst het voorbeeld in. Deuren en ramen zijn nu los van elkaar.</p>
       </div>
       <img src="logo.png" alt="Keimwerken logo" class="logo" />
@@ -24,15 +24,28 @@
           <span>Naam klant</span>
           <input id="naam" type="text" placeholder="Bijv. Jansen" />
         </label>
-        <label>
-          <span>Adres</span>
-          <input id="adres" type="text" placeholder="Bijv. Iras 9" />
+        <label class="address-lookup-wrap">
+          <span>Straat + huisnummer</span>
+          <input id="adresZoek" type="text" placeholder="Bijv. Iras 9" autocomplete="off" />
+          <div id="adresSuggesties" class="suggestions" hidden></div>
         </label>
       </div>
+      <div class="grid2" style="margin-top:12px;">
+        <label>
+          <span>Postcode</span>
+          <input id="postcode" type="text" placeholder="Bijv. 5591 DZ" />
+        </label>
+        <label>
+          <span>Plaats</span>
+          <input id="plaats" type="text" placeholder="Bijv. Heeze" />
+        </label>
+      </div>
+      <input id="adres" type="hidden" />
       <label style="display:block; margin-top:12px;">
         <span>Extra onderdelen (optioneel, gescheiden met komma)</span>
         <input id="extraOnderdelen" type="text" placeholder="Bijv. Garage, Tuinmuur" />
       </label>
+      <p class="hint" style="margin-top:10px;">Gratis adresaanvulling via PDOK. Kies bij voorkeur een suggestie uit de lijst.</p>
     </section>
 
     <section class="card">
@@ -69,6 +82,6 @@
     </section>
   </div>
 
-  <script src="app.js?v=20"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>
