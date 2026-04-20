@@ -334,9 +334,7 @@ async function makePdf(){
       head:[["Onderdeel","Waarde"]],
       body:[
         ["Bruto", `${format2(sec.bruto)} m²`],
-        ["Aftrek deuren", `${format2(sec.aftrekDeuren)} m²`],
-        ["Aftrek ramen", `${format2(sec.aftrekRamen)} m²`],
-        ["Aftrek totaal", `${format2(sec.aftrek)} m²`],
+        ["Aftrek ramen en deuren", `${format2(sec.aftrek)} m²`],
         ["Netto", `${format2(sec.netto)} m²`],
         ["Deuren", `${sec.deurCount}`],
         ["Ramen", `${sec.raamCount}`],
