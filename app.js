@@ -2,7 +2,7 @@
 let laatsteData = null;
 const BASIS_GEVELS = ["Voorkant", "Rechts", "Achter", "Links"];
 
-const TEMPLATE_TEXT = `Strekkende meter donkere band totaal woning:
+const TEMPLATE_TEXT = `Strekkende meter donkere band totaal woning: 0
 
 Voorkant 
 Totaal aantal deuren:
@@ -153,6 +153,7 @@ function parseInput(text){
   allNames.forEach(name => gevelLookup[name.toLowerCase()] = name);
   const warnings = [];
   const recognizedHeaders = ["extra toevoegingen:"];
+  const donkereBandRegex = /^strekkende meter donkere band totaal woning\s*:\s*(.*)$/i;
 
   for(let i = 0; i < lines.length; i++){
     const lineNumber = i + 1;
@@ -167,6 +168,20 @@ function parseInput(text){
       continue;
     }
     if(recognizedHeaders.includes(normalized)) continue;
+
+    const donkereBandLine = line.match(donkereBandRegex);
+    if(donkereBandLine){
+      const rawValue = String(donkereBandLine[1] || "").trim();
+      if(rawValue === ""){
+        continue;
+      }
+      const donkereBandValue = parseOptionalNumber(rawValue);
+      if(donkereBandValue !== null){
+        continue;
+      }
+      warnings.push({ lineNumber, line, reason:"donkere band is niet duidelijk, gebruik bijvoorbeeld 0 of 25" });
+      continue;
+    }
 
     const cntDeur = detectCount(line, ["totaal aantal deuren", "aantal deuren"]);
     if(cntDeur !== null && !normalized.includes("ramen")){
@@ -220,8 +235,15 @@ function parseInput(text){
 
   let donkereBand = null;
   {
-    const match = text.match(/Strekkende meter donkere band totaal woning\s*:\s*([0-9]+(?:[.,][0-9]+)?)/i);
-    if(match) donkereBand = parseOptionalNumber(match[1]);
+    const match = text.match(/Strekkende meter donkere band totaal woning\s*:\s*(.*)/i);
+    if(match){
+      const rawValue = String(match[1] || "").trim();
+      if(rawValue === ""){
+        donkereBand = null;
+      } else {
+        donkereBand = parseOptionalNumber(rawValue);
+      }
+    }
   }
 
   return {
@@ -603,10 +625,25 @@ function restoreDraft(){
 function processInput(options = {}){
   syncAdresHiddenField();
   const text = document.getElementById("input").value.trim();
-  if(!text) return;
-  laatsteData = parseInput(text);
+  if(!text){
+    laatsteData = null;
+    renderInputFeedback({ warnings: [] });
+    clearResult();
+    setMessage("Plak eerst een gevelopname.");
+    return false;
+  }
+  const data = parseInput(text);
+  renderInputFeedback(data);
+  if(data.warnings.length){
+    laatsteData = null;
+    clearResult();
+    setMessage(`Controleer ${data.warnings.length} onduidelijke regel(s) voordat je verdergaat.`);
+    return false;
+  }
+  laatsteData = data;
   renderResult(laatsteData);
-  document.getElementById("melding").textContent = "Berekening verwerkt.";
+  setMessage(options.forPdf ? "Berekening verwerkt. PDF wordt gemaakt." : "Berekening verwerkt.");
+  return true;
 }
 
 document.getElementById("adresZoek")?.addEventListener("input", debounce((e) => {
