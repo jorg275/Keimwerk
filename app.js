@@ -2,7 +2,7 @@
 let laatsteData = null;
 const BASIS_GEVELS = ["Voorkant", "Rechts", "Achter", "Links"];
 
-const TEMPLATE_TEXT = `Strekkende meter donkere band totaal woning: 0
+const TEMPLATE_TEXT = `Strekkende meter donkere band totaal woning:
 
 Voorkant 
 Totaal aantal deuren:
@@ -153,7 +153,6 @@ function parseInput(text){
   allNames.forEach(name => gevelLookup[name.toLowerCase()] = name);
   const warnings = [];
   const recognizedHeaders = ["extra toevoegingen:"];
-  const donkereBandRegex = /^strekkende meter donkere band totaal woning\s*:\s*(.*)$/i;
 
   for(let i = 0; i < lines.length; i++){
     const lineNumber = i + 1;
@@ -168,20 +167,6 @@ function parseInput(text){
       continue;
     }
     if(recognizedHeaders.includes(normalized)) continue;
-
-    const donkereBandLine = line.match(donkereBandRegex);
-    if(donkereBandLine){
-      const rawValue = String(donkereBandLine[1] || "").trim();
-      if(rawValue === ""){
-        continue;
-      }
-      const donkereBandValue = parseOptionalNumber(rawValue);
-      if(donkereBandValue !== null){
-        continue;
-      }
-      warnings.push({ lineNumber, line, reason:"donkere band is niet duidelijk, gebruik bijvoorbeeld 0 of 25" });
-      continue;
-    }
 
     const cntDeur = detectCount(line, ["totaal aantal deuren", "aantal deuren"]);
     if(cntDeur !== null && !normalized.includes("ramen")){
@@ -235,15 +220,8 @@ function parseInput(text){
 
   let donkereBand = null;
   {
-    const match = text.match(/Strekkende meter donkere band totaal woning\s*:\s*(.*)/i);
-    if(match){
-      const rawValue = String(match[1] || "").trim();
-      if(rawValue === ""){
-        donkereBand = null;
-      } else {
-        donkereBand = parseOptionalNumber(rawValue);
-      }
-    }
+    const match = text.match(/Strekkende meter donkere band totaal woning\s*:\s*([0-9]+(?:[.,][0-9]+)?)/i);
+    if(match) donkereBand = parseOptionalNumber(match[1]);
   }
 
   return {
@@ -263,38 +241,15 @@ function parseInput(text){
 function renderResult(data){
   const res = document.getElementById("resultaat");
   res.classList.remove("leeg");
-  const hasDonkereBand = data.donkereBand !== null;
-  const showLargeDonkereBand = hasDonkereBand && data.donkereBand > 0;
-  const showSmallDonkereBand = hasDonkereBand && data.donkereBand === 0;
-
   let html = `
-    <div class="overview-header">
-      <div class="metric metric-main">
-        <div class="label">Netto te behandelen oppervlak</div>
-        <div class="value">${format2(data.totaalNetto)} m²</div>
-      </div>
-      ${showLargeDonkereBand ? `<div class="metric metric-band-large"><div class="label">Donkere band</div><div class="value">${format2(data.donkereBand)} m1</div></div>` : ""}
-    </div>
-    <div class="overview-grid">
-      <div class="overview-block">
-        <h3>Oppervlaktes</h3>
-        <table>
-          <tr><th>Oppervlaktes</th><th>Waarde</th></tr>
-          <tr><td><strong>Netto totaal</strong></td><td>${format2(data.totaalNetto)} m²</td></tr>
-          <tr><td>Bruto totaal</td><td>${format2(data.totaalBruto)} m²</td></tr>
-          <tr><td><strong>Aftrek totaal</strong></td><td>${format2(data.totaalAftrek)} m²</td></tr>
-        </table>
-      </div>
-      <div class="overview-block">
-        <h3>Aantallen</h3>
-        <table>
-          <tr><th>Onderdeel</th><th>Waarde</th></tr>
-          <tr><td>Totaal deuren</td><td>${data.totaalDeuren}</td></tr>
-          <tr><td>Totaal ramen</td><td>${data.totaalRamen}</td></tr>
-          <tr><td>Totaal regenpijpen</td><td>${data.totaalPipe}</td></tr>
-          ${showSmallDonkereBand ? `<tr><td>Donkere band</td><td>${format2(data.donkereBand)} m1</td></tr>` : ""}
-        </table>
-      </div>
+    <div class="overview">
+      <div class="metric"><div class="label">Netto totaal</div><div class="value">${format2(data.totaalNetto)} m²</div></div>
+      <div class="metric"><div class="label">Bruto totaal</div><div class="value">${format2(data.totaalBruto)} m²</div></div>
+      <div class="metric"><div class="label">Aftrek totaal</div><div class="value">${format2(data.totaalAftrek)} m²</div></div>
+      <div class="metric"><div class="label">Totaal deuren</div><div class="value">${data.totaalDeuren}</div></div>
+      <div class="metric"><div class="label">Totaal ramen</div><div class="value">${data.totaalRamen}</div></div>
+      <div class="metric"><div class="label">Regenpijpen</div><div class="value">${data.totaalPipe}</div></div>
+      ${data.donkereBand !== null ? `<div class="metric"><div class="label">Donkere band</div><div class="value">${format2(data.donkereBand)} m1</div></div>` : ""}
     </div>`;
   data.sectionNames.forEach(g => {
     const sec = data.gevels[g];
@@ -338,7 +293,6 @@ function saveProject(){
   existing.unshift(item);
   localStorage.setItem(key, JSON.stringify(existing.slice(0, 50)));
   restoreDraft();
-restoreDraft();
 renderProjects(); setMessage("Project opgeslagen.");
 }
 function renderProjects(){
@@ -414,66 +368,22 @@ async function makePdf(){
 
   // Pagina 1: alleen overzicht
   addHeader("GEVELBEREKENING", laatsteData.naam, laatsteData.adres, "Datum: " + laatsteData.datum);
+  doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.text("Overzicht", 14, 58);
 
-  const hasDonkereBand = laatsteData.donkereBand !== null;
-  const showLargeDonkereBand = hasDonkereBand && laatsteData.donkereBand > 0;
-  const showSmallDonkereBand = hasDonkereBand && laatsteData.donkereBand === 0;
-
-  doc.setFillColor(...blue);
-  doc.roundedRect(14, 58, 182, 26, 3, 3, "F");
-  doc.setTextColor(255,255,255);
-  doc.setFont("helvetica","bold");
-  doc.setFontSize(11);
-  doc.text("Netto te behandelen oppervlak", 20, 68);
-  doc.setFontSize(24);
-  doc.text(`${format2(laatsteData.totaalNetto)} m²`, 20, 80);
-
-  let currentY = 92;
-
-  if(showLargeDonkereBand){
-    doc.setFillColor(...blue);
-    doc.roundedRect(14, currentY, 182, 16, 3, 3, "F");
-    doc.setTextColor(255,255,255);
-    doc.setFont("helvetica","bold");
-    doc.setFontSize(11);
-    doc.text("Donkere band", 20, currentY + 10);
-    doc.setFontSize(16);
-    doc.text(`${format2(laatsteData.donkereBand)} m1`, 182, currentY + 10, {align:"right"});
-    currentY += 24;
-  }
-
-  doc.setTextColor(...dark);
-  doc.setFont("helvetica","bold");
-  doc.setFontSize(11);
-  doc.text("Oppervlaktes", 14, currentY);
-  doc.text("Aantallen", 108, currentY);
-
-  doc.autoTable({
-    startY: currentY + 4,
-    margin:{left:14, right:104},
-    head:[["Oppervlaktes","Waarde"]],
-    body:[
-      ["Netto totaal", `${format2(laatsteData.totaalNetto)} m²`],
-      ["Bruto totaal", `${format2(laatsteData.totaalBruto)} m²`],
-      ["Aftrek totaal", `${format2(laatsteData.totaalAftrek)} m²`],
-    ],
-    theme:"grid",
-    headStyles:{fillColor:blue, halign:"left"},
-    styles:{font:"helvetica", fontSize:10, cellPadding:3}
-  });
-
-  const aantallenBody = [
+  const overviewBody = [
+    ["Netto totaal", `${format2(laatsteData.totaalNetto)} m²`],
+    ["Bruto totaal", `${format2(laatsteData.totaalBruto)} m²`],
+    ["Aftrek totaal", `${format2(laatsteData.totaalAftrek)} m²`],
     ["Totaal deuren", `${laatsteData.totaalDeuren}`],
     ["Totaal ramen", `${laatsteData.totaalRamen}`],
     ["Totaal regenpijpen", `${laatsteData.totaalPipe}`],
   ];
-  if(showSmallDonkereBand) aantallenBody.push(["Donkere band", `${format2(laatsteData.donkereBand)} m1`]);
+  if(laatsteData.donkereBand !== null) overviewBody.push(["Donkere band", `${format2(laatsteData.donkereBand)} m1`]);
 
   doc.autoTable({
-    startY: currentY + 4,
-    margin:{left:108, right:14},
-    head:[["Onderdeel","Waarde"]],
-    body:aantallenBody,
+    startY:62,
+    head:[["Omschrijving","Waarde"]],
+    body:overviewBody,
     theme:"grid",
     headStyles:{fillColor:blue, halign:"left"},
     styles:{font:"helvetica", fontSize:10, cellPadding:3}
@@ -692,27 +602,11 @@ function restoreDraft(){
 
 function processInput(options = {}){
   syncAdresHiddenField();
-  saveDraft();
   const text = document.getElementById("input").value.trim();
-  if(!text){
-    laatsteData = null;
-    renderInputFeedback({ warnings: [] });
-    clearResult();
-    setMessage("Plak eerst een gevelopname.");
-    return false;
-  }
-  const data = parseInput(text);
-  renderInputFeedback(data);
-  if(data.warnings.length){
-    laatsteData = null;
-    clearResult();
-    setMessage(`Controleer ${data.warnings.length} onduidelijke regel(s) voordat je verdergaat.`);
-    return false;
-  }
-  laatsteData = data;
+  if(!text) return;
+  laatsteData = parseInput(text);
   renderResult(laatsteData);
-  setMessage(options.forPdf ? "Berekening verwerkt. PDF wordt gemaakt." : "Berekening verwerkt.");
-  return true;
+  document.getElementById("melding").textContent = "Berekening verwerkt.";
 }
 
 document.getElementById("adresZoek")?.addEventListener("input", debounce((e) => {
