@@ -47,35 +47,84 @@ th{color:#36536b}
 }
 
 
-.overview-header{display:flex;flex-direction:column;gap:14px;margin-bottom:18px;}
-.metric-main{
-  background:linear-gradient(135deg,#2f68a5,#4a86c7);
-  color:#fff;
-  border-color:#2f68a5;
-  padding:18px 20px;
+.address-lookup-wrap{position:relative;}
+.suggestions{
+  position:absolute;
+  top:100%;
+  left:0;
+  right:0;
+  z-index:30;
+  margin-top:6px;
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:12px;
+  box-shadow:0 10px 24px rgba(0,0,0,.08);
+  overflow:hidden;
 }
-.metric-main .label{color:#eef5fb;font-size:16px;font-weight:700;}
-.metric-main .value{font-size:34px;font-weight:800;line-height:1.1;margin-top:8px;}
-.metric-band-large{
-  background:linear-gradient(135deg,#2f68a5,#4a86c7);
-  color:#fff;
-  border-color:#2f68a5;
-  padding:16px 20px;
-  max-width:420px;
+.suggestion-item{
+  display:block;
+  width:100%;
+  padding:12px 14px;
+  text-align:left;
+  border:none;
+  border-bottom:1px solid var(--line);
+  border-radius:0;
+  background:#fff;
+  color:#1d2a36;
+  font-weight:600;
 }
-.metric-band-large .label{color:#eef5fb;font-size:16px;font-weight:700;}
-.metric-band-large .value{font-size:28px;font-weight:800;line-height:1.1;margin-top:6px;}
-.overview-grid{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:18px;
-  align-items:start;
+.suggestion-item:last-child{border-bottom:none;}
+.suggestion-item span{
+  display:block;
+  margin-top:3px;
+  color:#617282;
+  font-weight:400;
 }
-.overview-block h3{margin:0 0 10px 0;font-size:20px;color:#1d2a36;}
-.overview-block table th:last-child,
-.overview-block table td:last-child{text-align:right;}
+.suggestion-item:hover{background:#f8fafc;}
+
+
+#input{
+  min-height:260px;
+  line-height:24px;
+  white-space:pre-wrap;
+  background-repeat:no-repeat;
+}
+#input.input-has-warnings{
+  border-color:#dc2626;
+}
+.input-feedback{
+  margin-top:12px;
+  border:1px solid #fecaca;
+  background:#fef2f2;
+  color:#991b1b;
+  border-radius:12px;
+  padding:12px 14px;
+}
+.input-feedback-title{
+  font-weight:700;
+  margin-bottom:8px;
+}
+.input-feedback ul{
+  margin:0;
+  padding-left:18px;
+}
+.input-feedback li{
+  margin:0 0 6px 0;
+}
+.input-feedback li span{
+  color:#7f1d1d;
+}
+.input-feedback-more{
+  margin-top:6px;
+  font-weight:600;
+}
+.overview .metric:first-child{
+  background:#eef5fb;
+  border-color:#bfd3e6;
+}
+.overview .metric:first-child .value{
+  font-size:28px;
+}
 @media (max-width:700px){
-  .overview-grid{grid-template-columns:1fr;}
-  .metric-main .value{font-size:28px;}
-  .metric-band-large .value{font-size:24px;}
+  button{width:100%}
 }

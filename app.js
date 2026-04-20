@@ -2,7 +2,7 @@
 let laatsteData = null;
 const BASIS_GEVELS = ["Voorkant", "Rechts", "Achter", "Links"];
 
-const TEMPLATE_TEXT = `Strekkende meter donkere band totaal woning: 0
+const TEMPLATE_TEXT = `Strekkende meter donkere band totaal woning:
 
 Voorkant 
 Totaal aantal deuren:
@@ -52,6 +52,31 @@ function getAllSectionNames(){ return [...BASIS_GEVELS, ...getExtraNames()]; }
 function normalizeNumber(str){ return parseFloat(String(str).replace(",", ".").trim()); }
 function round2(n){ return Math.round((n + Number.EPSILON) * 100) / 100; }
 function format2(n){ return round2(n).toFixed(2).replace(".", ","); }
+function debounce(fn, wait){
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), wait);
+  };
+}
+function escapeHtml(str){
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+function getAdresSamengesteld(){
+  const straat = (document.getElementById("adresZoek")?.value || "").trim();
+  const postcode = (document.getElementById("postcode")?.value || "").trim().toUpperCase();
+  const plaats = (document.getElementById("plaats")?.value || "").trim();
+  return [straat, [postcode, plaats].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+}
+function syncAdresHiddenField(){
+  const hidden = document.getElementById("adres");
+  if(hidden) hidden.value = getAdresSamengesteld();
+}
 function parseOptionalNumber(val){
   const s = String(val || "").trim().replace(",", ".");
   if(!s) return null;
@@ -78,10 +103,19 @@ function detectCount(line, patterns){
   }
   return null;
 }
+function cleanupMeasurementLine(line){
+  return String(line || "")
+    .replace(/[–—]/g, "-")
+    .replace(/×/gi, "x")
+    .replace(/÷/g, "/")
+    .replace(/\*/g, "x")
+    .replace(/\s+/g, "")
+    .replace(/^-+/, "");
+}
 function parseMeasurementLine(line){
-  let clean = line.trim();
+  let clean = cleanupMeasurementLine(line);
   if(!clean) return null;
-  clean = clean.replace(/-/g, "").replace(/\s+/g, "");
+
   let m2Match = clean.match(/^(\d+(?:[.,]\d+)?)m2$/i);
   if(m2Match) return { expr: clean, m2: round2(normalizeNumber(m2Match[1])) };
 
@@ -93,13 +127,24 @@ function parseMeasurementLine(line){
     const a = normalizeNumber(multMatch[1]), b = normalizeNumber(multMatch[2]), mult = multMatch[3] ? parseInt(multMatch[3], 10) : 1;
     return { expr: clean, m2: round2(a*b*mult) };
   }
+
+  const formula = clean.toLowerCase().replace(/,/g, ".").replace(/x/g, "*").replace(/:/g, "/");
+  if(/^[0-9+\-*/().]+$/.test(formula) && /[*/+\-]/.test(formula)){
+    try{
+      const result = Function('"use strict"; return (' + formula + ');')();
+      if(Number.isFinite(result)){
+        return { expr: clean, m2: round2(result) };
+      }
+    } catch(e){}
+  }
   return null;
 }
 function createSection(name){
   return { naam:name, deurCount:0, raamCount:0, pipeCount:0, muren:[], deuren:[], ramen:[], bruto:0, aftrekDeuren:0, aftrekRamen:0, aftrek:0, netto:0 };
 }
 function parseInput(text){
-  const lines = text.split(/\r?\n/).map(l => l.trim());
+  const rawLines = text.split(/\r?\n/);
+  const lines = rawLines.map(l => l.trim());
   const allNames = getAllSectionNames();
   const sections = {};
   let currentGevel = null, mode = null;
@@ -107,29 +152,59 @@ function parseInput(text){
   const gevelLookup = {};
   allNames.forEach(name => gevelLookup[name.toLowerCase()] = name);
   const warnings = [];
+  const recognizedHeaders = ["extra toevoegingen:"];
 
-  for(let raw of lines){
+  for(let i = 0; i < lines.length; i++){
+    const lineNumber = i + 1;
+    const raw = rawLines[i] || "";
     const line = raw.trim();
     if(!line) continue;
     const normalized = line.toLowerCase().replace(/\s+/g, " ").trim();
-    if(gevelLookup[normalized]){ currentGevel = gevelLookup[normalized]; mode = null; continue; }
-    if(!currentGevel) continue;
+
+    if(gevelLookup[normalized]){
+      currentGevel = gevelLookup[normalized];
+      mode = null;
+      continue;
+    }
+    if(recognizedHeaders.includes(normalized)) continue;
+
     const cntDeur = detectCount(line, ["totaal aantal deuren", "aantal deuren"]);
-    if(cntDeur !== null && !normalized.includes("ramen")){ sections[currentGevel].deurCount = cntDeur; continue; }
+    if(cntDeur !== null && !normalized.includes("ramen")){
+      if(currentGevel) sections[currentGevel].deurCount = cntDeur;
+      else warnings.push({ lineNumber, line, reason:"aantal deuren staat buiten een gevel" });
+      continue;
+    }
     const cntRaam = detectCount(line, ["totaal aantal ramen", "aantal ramen"]);
-    if(cntRaam !== null){ sections[currentGevel].raamCount = cntRaam; continue; }
+    if(cntRaam !== null){
+      if(currentGevel) sections[currentGevel].raamCount = cntRaam;
+      else warnings.push({ lineNumber, line, reason:"aantal ramen staat buiten een gevel" });
+      continue;
+    }
     const cntPipe = detectCount(line, ["totaal regenpijpen", "totaal regen pijpen"]);
-    if(cntPipe !== null){ sections[currentGevel].pipeCount = cntPipe; continue; }
+    if(cntPipe !== null){
+      if(currentGevel) sections[currentGevel].pipeCount = cntPipe;
+      else warnings.push({ lineNumber, line, reason:"regenpijp-regel staat buiten een gevel" });
+      continue;
+    }
+
     if(normalized === "muren"){ mode = "muren"; continue; }
     if(normalized === "deuren"){ mode = "deuren"; continue; }
     if(normalized === "ramen"){ mode = "ramen"; continue; }
+
     const parsed = parseMeasurementLine(line);
     if(parsed){
+      if(!currentGevel){
+        warnings.push({ lineNumber, line, reason:"maatregel staat buiten een gevel" });
+        continue;
+      }
       if(mode === "muren") sections[currentGevel].muren.push(parsed);
       else if(mode === "deuren") sections[currentGevel].deuren.push(parsed);
       else if(mode === "ramen") sections[currentGevel].ramen.push(parsed);
-      else warnings.push(`Regel zonder blok bij ${currentGevel}: ${line}`);
+      else warnings.push({ lineNumber, line, reason:`maatregel staat niet onder Muren, Deuren of Ramen bij ${currentGevel}` });
+      continue;
     }
+
+    warnings.push({ lineNumber, line, reason:"regel wordt niet herkend" });
   }
 
   let totaalBruto=0, totaalAftrek=0, totaalDeuren=0, totaalRamen=0, totaalPipe=0;
@@ -145,20 +220,13 @@ function parseInput(text){
 
   let donkereBand = null;
   {
-    const match = text.match(/Strekkende meter donkere band totaal woning\s*:\s*(.*)/i);
-    if(match){
-      const rawValue = String(match[1] || "").trim();
-      if(rawValue === ""){
-        donkereBand = null;
-      } else {
-        donkereBand = parseOptionalNumber(rawValue);
-      }
-    }
+    const match = text.match(/Strekkende meter donkere band totaal woning\s*:\s*([0-9]+(?:[.,][0-9]+)?)/i);
+    if(match) donkereBand = parseOptionalNumber(match[1]);
   }
 
   return {
     naam: document.getElementById("naam").value.trim(),
-    adres: document.getElementById("adres").value.trim(),
+    adres: getAdresSamengesteld(),
     datum: new Date().toLocaleDateString("nl-NL"),
     extraNames: getExtraNames(),
     donkereBand,
@@ -173,38 +241,15 @@ function parseInput(text){
 function renderResult(data){
   const res = document.getElementById("resultaat");
   res.classList.remove("leeg");
-  const hasDonkereBand = data.donkereBand !== null;
-  const showLargeDonkereBand = hasDonkereBand && data.donkereBand > 0;
-  const showSmallDonkereBand = hasDonkereBand && data.donkereBand === 0;
-
   let html = `
-    <div class="overview-header">
-      <div class="metric metric-main">
-        <div class="label">Netto te behandelen oppervlak</div>
-        <div class="value">${format2(data.totaalNetto)} m²</div>
-      </div>
-      ${showLargeDonkereBand ? `<div class="metric metric-band-large"><div class="label">Donkere band</div><div class="value">${format2(data.donkereBand)} m1</div></div>` : ""}
-    </div>
-    <div class="overview-grid">
-      <div class="overview-block">
-        <h3>Oppervlaktes</h3>
-        <table>
-          <tr><th>Oppervlaktes</th><th>Waarde</th></tr>
-          <tr><td><strong>Netto totaal</strong></td><td>${format2(data.totaalNetto)} m²</td></tr>
-          <tr><td>Bruto totaal</td><td>${format2(data.totaalBruto)} m²</td></tr>
-          <tr><td><strong>Aftrek totaal</strong></td><td>${format2(data.totaalAftrek)} m²</td></tr>
-        </table>
-      </div>
-      <div class="overview-block">
-        <h3>Aantallen</h3>
-        <table>
-          <tr><th>Onderdeel</th><th>Waarde</th></tr>
-          <tr><td>Totaal deuren</td><td>${data.totaalDeuren}</td></tr>
-          <tr><td>Totaal ramen</td><td>${data.totaalRamen}</td></tr>
-          <tr><td>Totaal regenpijpen</td><td>${data.totaalPipe}</td></tr>
-          ${showSmallDonkereBand ? `<tr><td>Donkere band</td><td>${format2(data.donkereBand)} m1</td></tr>` : ""}
-        </table>
-      </div>
+    <div class="overview">
+      <div class="metric"><div class="label">Netto totaal</div><div class="value">${format2(data.totaalNetto)} m²</div></div>
+      <div class="metric"><div class="label">Bruto totaal</div><div class="value">${format2(data.totaalBruto)} m²</div></div>
+      <div class="metric"><div class="label">Aftrek totaal</div><div class="value">${format2(data.totaalAftrek)} m²</div></div>
+      <div class="metric"><div class="label">Totaal deuren</div><div class="value">${data.totaalDeuren}</div></div>
+      <div class="metric"><div class="label">Totaal ramen</div><div class="value">${data.totaalRamen}</div></div>
+      <div class="metric"><div class="label">Regenpijpen</div><div class="value">${data.totaalPipe}</div></div>
+      ${data.donkereBand !== null ? `<div class="metric"><div class="label">Donkere band</div><div class="value">${format2(data.donkereBand)} m1</div></div>` : ""}
     </div>`;
   data.sectionNames.forEach(g => {
     const sec = data.gevels[g];
@@ -213,9 +258,7 @@ function renderResult(data){
       <table>
         <tr><th>Onderdeel</th><th>Waarde</th></tr>
         <tr><td>Bruto</td><td>${format2(sec.bruto)} m²</td></tr>
-        <tr><td>Aftrek deuren</td><td>${format2(sec.aftrekDeuren)} m²</td></tr>
-        <tr><td>Aftrek ramen</td><td>${format2(sec.aftrekRamen)} m²</td></tr>
-        <tr><td>Aftrek totaal</td><td>${format2(sec.aftrek)} m²</td></tr>
+        <tr><td>Aftrek ramen en deuren</td><td>${format2(sec.aftrek)} m²</td></tr>
         <tr><td>Netto</td><td>${format2(sec.netto)} m²</td></tr>
         <tr><td>Deuren</td><td>${sec.deurCount}</td></tr>
         <tr><td>Ramen</td><td>${sec.raamCount}</td></tr>
@@ -235,11 +278,15 @@ function saveProject(){
   if(!laatsteData){ setMessage("Verwerk eerst de opname."); return; }
   const key = "keimwerken-projecten";
   const existing = JSON.parse(localStorage.getItem(key) || "[]");
+  syncAdresHiddenField();
   const item = {
     id: Date.now(),
     naam: document.getElementById("naam").value.trim(),
-    adres: document.getElementById("adres").value.trim(),
+    adres: getAdresSamengesteld(),
     extraOnderdelen: document.getElementById("extraOnderdelen").value.trim(),
+    straat: document.getElementById("adresZoek").value.trim(),
+    postcode: document.getElementById("postcode").value.trim(),
+    plaats: document.getElementById("plaats").value.trim(),
     input: document.getElementById("input").value,
     datum: new Date().toLocaleString("nl-NL")
   };
@@ -271,9 +318,13 @@ function openProject(id){
   const item = arr.find(x => x.id === id);
   if(!item) return;
   document.getElementById("naam").value = item.naam || "";
-  document.getElementById("adres").value = item.adres || "";
+  document.getElementById("adresZoek").value = item.straat || "";
+  document.getElementById("postcode").value = item.postcode || "";
+  document.getElementById("plaats").value = item.plaats || "";
+  syncAdresHiddenField();
   document.getElementById("extraOnderdelen").value = item.extraOnderdelen || "";
   document.getElementById("input").value = item.input || "";
+  saveDraft();
   processInput();
 }
 function deleteProject(id){
@@ -297,7 +348,7 @@ function loadImageAsDataURL(url){
   });
 }
 async function makePdf(){
-  if(!laatsteData){ processInput(); if(!laatsteData) return; }
+  if(!laatsteData){ const ok = processInput({ forPdf:true }); if(!ok || !laatsteData) return; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({unit:"mm", format:"a4"});
   const blue = [31,95,153], dark = [24,53,79];
@@ -317,65 +368,22 @@ async function makePdf(){
 
   // Pagina 1: alleen overzicht
   addHeader("GEVELBEREKENING", laatsteData.naam, laatsteData.adres, "Datum: " + laatsteData.datum);
-  const hasDonkereBand = laatsteData.donkereBand !== null;
-  const showLargeDonkereBand = hasDonkereBand && laatsteData.donkereBand > 0;
-  const showSmallDonkereBand = hasDonkereBand && laatsteData.donkereBand === 0;
+  doc.setFont("helvetica","bold"); doc.setFontSize(13); doc.text("Overzicht", 14, 58);
 
-  doc.setFillColor(...blue);
-  doc.roundedRect(14, 58, 182, 26, 3, 3, "F");
-  doc.setTextColor(255,255,255);
-  doc.setFont("helvetica","bold");
-  doc.setFontSize(11);
-  doc.text("Netto te behandelen oppervlak", 20, 68);
-  doc.setFontSize(24);
-  doc.text(`${format2(laatsteData.totaalNetto)} m²`, 20, 80);
-
-  let currentY = 92;
-
-  if(showLargeDonkereBand){
-    doc.setFillColor(...blue);
-    doc.roundedRect(14, currentY, 182, 16, 3, 3, "F");
-    doc.setTextColor(255,255,255);
-    doc.setFont("helvetica","bold");
-    doc.setFontSize(11);
-    doc.text("Donkere band", 20, currentY + 10);
-    doc.setFontSize(16);
-    doc.text(`${format2(laatsteData.donkereBand)} m1`, 182, currentY + 10, {align:"right"});
-    currentY += 24;
-  }
-
-  doc.setTextColor(...dark);
-  doc.setFont("helvetica","bold");
-  doc.setFontSize(11);
-  doc.text("Oppervlaktes", 14, currentY);
-  doc.text("Aantallen", 108, currentY);
-
-  doc.autoTable({
-    startY: currentY + 4,
-    margin:{left:14, right:104},
-    head:[["Oppervlaktes","Waarde"]],
-    body:[
-      ["Netto totaal", `${format2(laatsteData.totaalNetto)} m²`],
-      ["Bruto totaal", `${format2(laatsteData.totaalBruto)} m²`],
-      ["Aftrek totaal", `${format2(laatsteData.totaalAftrek)} m²`],
-    ],
-    theme:"grid",
-    headStyles:{fillColor:blue, halign:"left"},
-    styles:{font:"helvetica", fontSize:10, cellPadding:3}
-  });
-
-  const aantallenBody = [
+  const overviewBody = [
+    ["Netto totaal", `${format2(laatsteData.totaalNetto)} m²`],
+    ["Bruto totaal", `${format2(laatsteData.totaalBruto)} m²`],
+    ["Aftrek totaal", `${format2(laatsteData.totaalAftrek)} m²`],
     ["Totaal deuren", `${laatsteData.totaalDeuren}`],
     ["Totaal ramen", `${laatsteData.totaalRamen}`],
     ["Totaal regenpijpen", `${laatsteData.totaalPipe}`],
   ];
-  if(showSmallDonkereBand) aantallenBody.push(["Donkere band", `${format2(laatsteData.donkereBand)} m1`]);
+  if(laatsteData.donkereBand !== null) overviewBody.push(["Donkere band", `${format2(laatsteData.donkereBand)} m1`]);
 
   doc.autoTable({
-    startY: currentY + 4,
-    margin:{left:108, right:14},
-    head:[["Onderdeel","Waarde"]],
-    body:aantallenBody,
+    startY:62,
+    head:[["Omschrijving","Waarde"]],
+    body:overviewBody,
     theme:"grid",
     headStyles:{fillColor:blue, halign:"left"},
     styles:{font:"helvetica", fontSize:10, cellPadding:3}
@@ -389,14 +397,15 @@ async function makePdf(){
     doc.addPage();
     addHeader("GEVELBEREKENING", laatsteData.naam, laatsteData.adres, "Datum: " + laatsteData.datum);
 
-    doc.setFont("helvetica","bold");
     if(i === 0){
+      doc.setFont("helvetica","bold");
       doc.setFontSize(12);
       doc.text("Gevelspecificatie", 14, 58);
       doc.setFontSize(11);
       doc.text(g, 14, 66);
       var startY = 70;
     } else {
+      doc.setFont("helvetica","bold");
       doc.setFontSize(11);
       doc.text(g, 14, 58);
       var startY = 62;
@@ -407,9 +416,7 @@ async function makePdf(){
       head:[["Onderdeel","Waarde"]],
       body:[
         ["Bruto", `${format2(sec.bruto)} m²`],
-        ["Aftrek deuren", `${format2(sec.aftrekDeuren)} m²`],
-        ["Aftrek ramen", `${format2(sec.aftrekRamen)} m²`],
-        ["Aftrek totaal", `${format2(sec.aftrek)} m²`],
+        ["Aftrek ramen en deuren", `${format2(sec.aftrek)} m²`],
         ["Netto", `${format2(sec.netto)} m²`],
         ["Deuren", `${sec.deurCount}`],
         ["Ramen", `${sec.raamCount}`],
@@ -441,13 +448,201 @@ async function makePdf(){
   doc.save(`gevelberekening_${safeName}.pdf`);
 }
 
-function processInput(){
+
+let actieveSuggesties = [];
+
+function hideSuggesties(){
+  const box = document.getElementById("adresSuggesties");
+  if(box){
+    box.hidden = true;
+    box.innerHTML = "";
+  }
+  actieveSuggesties = [];
+}
+function toonSuggesties(items){
+  const box = document.getElementById("adresSuggesties");
+  if(!box) return;
+  actieveSuggesties = items || [];
+  if(!items || !items.length){
+    hideSuggesties();
+    return;
+  }
+  box.innerHTML = items.map((item, index) => `
+    <button type="button" class="suggestion-item" data-index="${index}">
+      <strong>${escapeHtml(item.weergavenaam || "")}</strong>
+      <span>${escapeHtml(item.postcode || "")} ${escapeHtml(item.woonplaatsnaam || "")}</span>
+    </button>
+  `).join("");
+  box.hidden = false;
+}
+async function zoekAdresSuggesties(query){
+  const q = String(query || "").trim();
+  if(q.length < 4){
+    hideSuggesties();
+    return;
+  }
+  try{
+    const suggestUrl = "https://api.pdok.nl/bzk/locatieserver/search/v3_1/suggest?fq=type:adres&q=" + encodeURIComponent(q);
+    const suggestRes = await fetch(suggestUrl);
+    const suggestData = await suggestRes.json();
+    const docs = suggestData?.response?.docs || [];
+    const items = docs.slice(0, 8).map(doc => ({
+      id: doc.id,
+      weergavenaam: doc.weergavenaam || q
+    }));
+    if(!items.length){
+      hideSuggesties();
+      return;
+    }
+    const enriched = await Promise.all(items.map(async (item) => {
+      try{
+        const lookupUrl = "https://api.pdok.nl/bzk/locatieserver/search/v3_1/lookup?id=" + encodeURIComponent(item.id);
+        const lookupRes = await fetch(lookupUrl);
+        const lookupData = await lookupRes.json();
+        const detail = lookupData?.response?.docs?.[0] || {};
+        return {
+          ...item,
+          straatnaam: detail.straatnaam || "",
+          huisnummer: detail.huisnummer || "",
+          huisletter: detail.huisletter || "",
+          huisnummertoevoeging: detail.huisnummertoevoeging || "",
+          postcode: detail.postcode || "",
+          woonplaatsnaam: detail.woonplaatsnaam || ""
+        };
+      } catch(e){
+        return item;
+      }
+    }));
+    toonSuggesties(enriched);
+  } catch(e){
+    hideSuggesties();
+  }
+}
+function kiesAdresSuggestie(item){
+  if(!item) return;
+  const straat = [item.straatnaam, item.huisnummer, item.huisletter, item.huisnummertoevoeging].filter(Boolean).join(" ");
+  document.getElementById("adresZoek").value = straat || item.weergavenaam || "";
+  document.getElementById("postcode").value = item.postcode || "";
+  document.getElementById("plaats").value = item.woonplaatsnaam || "";
+  syncAdresHiddenField();
+  hideSuggesties();
+}
+
+
+function renderInputFeedback(data){
+  const input = document.getElementById("input");
+  const feedback = document.getElementById("inputFeedback");
+  const warnings = data?.warnings || [];
+  const lineHeight = 24;
+
+  if(input){
+    input.classList.toggle("input-has-warnings", warnings.length > 0);
+    if(warnings.length){
+      const gradients = warnings.map(w => {
+        const start = (w.lineNumber - 1) * lineHeight;
+        const end = start + lineHeight;
+        return `linear-gradient(to bottom, transparent ${start}px, transparent ${start}px, rgba(220,38,38,0.14) ${start}px, rgba(220,38,38,0.14) ${end}px, transparent ${end}px, transparent ${end}px)`;
+      });
+      input.style.backgroundImage = gradients.join(",");
+      input.style.backgroundColor = "#fff";
+      input.style.backgroundAttachment = "local";
+    } else {
+      input.style.backgroundImage = "none";
+      input.style.backgroundColor = "#fff";
+    }
+  }
+
+  if(!feedback) return;
+  if(!warnings.length){
+    feedback.hidden = true;
+    feedback.innerHTML = "";
+    return;
+  }
+  const items = warnings.slice(0, 8).map(w => `<li><strong>Regel ${w.lineNumber}:</strong> ${escapeHtml(w.line)} <span>— ${escapeHtml(w.reason)}</span></li>`).join("");
+  const more = warnings.length > 8 ? `<div class="input-feedback-more">Nog ${warnings.length - 8} regel(s) om te controleren.</div>` : "";
+  feedback.hidden = false;
+  feedback.innerHTML = `<div class="input-feedback-title">Controleer de rood gemarkeerde regels voordat je verdergaat.</div><ul>${items}</ul>${more}`;
+}
+
+function clearResult(){
+  const res = document.getElementById("resultaat");
+  res.className = "resultaat leeg";
+  res.innerHTML = "Nog niets verwerkt.";
+}
+
+function getDraftData(){
+  return {
+    naam: document.getElementById("naam")?.value || "",
+    straat: document.getElementById("adresZoek")?.value || "",
+    postcode: document.getElementById("postcode")?.value || "",
+    plaats: document.getElementById("plaats")?.value || "",
+    extraOnderdelen: document.getElementById("extraOnderdelen")?.value || "",
+    input: document.getElementById("input")?.value || ""
+  };
+}
+function saveDraft(){
+  try{
+    localStorage.setItem("keimwerken-draft-v22", JSON.stringify(getDraftData()));
+  } catch(e){}
+}
+function restoreDraft(){
+  try{
+    const raw = localStorage.getItem("keimwerken-draft-v22");
+    if(!raw) return;
+    const data = JSON.parse(raw);
+    if(document.getElementById("naam") && !document.getElementById("naam").value) document.getElementById("naam").value = data.naam || "";
+    if(document.getElementById("adresZoek") && !document.getElementById("adresZoek").value) document.getElementById("adresZoek").value = data.straat || "";
+    if(document.getElementById("postcode") && !document.getElementById("postcode").value) document.getElementById("postcode").value = data.postcode || "";
+    if(document.getElementById("plaats") && !document.getElementById("plaats").value) document.getElementById("plaats").value = data.plaats || "";
+    if(document.getElementById("extraOnderdelen") && !document.getElementById("extraOnderdelen").value) document.getElementById("extraOnderdelen").value = data.extraOnderdelen || "";
+    if(document.getElementById("input") && !document.getElementById("input").value) document.getElementById("input").value = data.input || "";
+    syncAdresHiddenField();
+  } catch(e){}
+}
+
+function processInput(options = {}){
+  syncAdresHiddenField();
   const text = document.getElementById("input").value.trim();
   if(!text) return;
   laatsteData = parseInput(text);
   renderResult(laatsteData);
   document.getElementById("melding").textContent = "Berekening verwerkt.";
 }
+
+document.getElementById("adresZoek")?.addEventListener("input", debounce((e) => {
+  syncAdresHiddenField();
+  zoekAdresSuggesties(e.target.value);
+}, 250));
+document.getElementById("postcode")?.addEventListener("input", syncAdresHiddenField);
+document.getElementById("plaats")?.addEventListener("input", syncAdresHiddenField);
+document.getElementById("adresSuggesties")?.addEventListener("click", (e) => {
+  const btn = e.target.closest(".suggestion-item");
+  if(!btn) return;
+  const item = actieveSuggesties[Number(btn.dataset.index)];
+  kiesAdresSuggestie(item);
+});
+document.addEventListener("click", (e) => {
+  if(!e.target.closest(".address-lookup-wrap")) hideSuggesties();
+});
+
+
+const autosaveFields = ["naam","adresZoek","postcode","plaats","extraOnderdelen","input"];
+autosaveFields.forEach(id => {
+  document.getElementById(id)?.addEventListener("input", debounce(() => {
+    if(id === "input"){
+      const current = parseInput(document.getElementById("input").value || "");
+      renderInputFeedback(current);
+      if(current.warnings.length){
+        setMessage(`Controleer ${current.warnings.length} onduidelijke regel(s).`);
+      } else if((document.getElementById("input").value || "").trim()){
+        setMessage("Concept automatisch opgeslagen.");
+      }
+    }
+    syncAdresHiddenField();
+    saveDraft();
+  }, 200));
+});
+
 document.getElementById("templateText").value = TEMPLATE_TEXT;
 document.getElementById("btnVerwerk").addEventListener("click", processInput);
 document.getElementById("btnPdf").addEventListener("click", makePdf);
