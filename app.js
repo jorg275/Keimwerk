@@ -198,7 +198,7 @@ function renderResult(data){
       <div class="overview-block">
         <h3>Aantallen</h3>
         <table>
-          <tr><th>Aantal</th><th>Aantal</th></tr>
+          <tr><th>Onderdeel</th><th>Waarde</th></tr>
           <tr><td>Totaal deuren</td><td>${data.totaalDeuren}</td></tr>
           <tr><td>Totaal ramen</td><td>${data.totaalRamen}</td></tr>
           <tr><td>Totaal regenpijpen</td><td>${data.totaalPipe}</td></tr>
@@ -245,7 +245,8 @@ function saveProject(){
   };
   existing.unshift(item);
   localStorage.setItem(key, JSON.stringify(existing.slice(0, 50)));
-  renderProjects(); setMessage("Project opgeslagen.");
+  restoreDraft();
+renderProjects(); setMessage("Project opgeslagen.");
 }
 function renderProjects(){
   const wrap = document.getElementById("projecten");
@@ -316,13 +317,12 @@ async function makePdf(){
 
   // Pagina 1: alleen overzicht
   addHeader("GEVELBEREKENING", laatsteData.naam, laatsteData.adres, "Datum: " + laatsteData.datum);
-
   const hasDonkereBand = laatsteData.donkereBand !== null;
   const showLargeDonkereBand = hasDonkereBand && laatsteData.donkereBand > 0;
   const showSmallDonkereBand = hasDonkereBand && laatsteData.donkereBand === 0;
 
   doc.setFillColor(...blue);
-  doc.roundedRect(14, 58, 182, 26, 2.5, 2.5, "F");
+  doc.roundedRect(14, 58, 182, 26, 3, 3, "F");
   doc.setTextColor(255,255,255);
   doc.setFont("helvetica","bold");
   doc.setFontSize(11);
@@ -334,13 +334,13 @@ async function makePdf(){
 
   if(showLargeDonkereBand){
     doc.setFillColor(...blue);
-    doc.roundedRect(14, currentY, 182, 16, 2.5, 2.5, "F");
+    doc.roundedRect(14, currentY, 182, 16, 3, 3, "F");
     doc.setTextColor(255,255,255);
     doc.setFont("helvetica","bold");
     doc.setFontSize(11);
     doc.text("Donkere band", 20, currentY + 10);
     doc.setFontSize(16);
-    doc.text(`${format2(laatsteData.donkereBand)} m1`, 150, currentY + 10, {align:"right"});
+    doc.text(`${format2(laatsteData.donkereBand)} m1`, 182, currentY + 10, {align:"right"});
     currentY += 24;
   }
 
@@ -374,7 +374,7 @@ async function makePdf(){
   doc.autoTable({
     startY: currentY + 4,
     margin:{left:108, right:14},
-    head:[["Aantal","Aantal"]],
+    head:[["Onderdeel","Waarde"]],
     body:aantallenBody,
     theme:"grid",
     headStyles:{fillColor:blue, halign:"left"},
@@ -389,15 +389,14 @@ async function makePdf(){
     doc.addPage();
     addHeader("GEVELBEREKENING", laatsteData.naam, laatsteData.adres, "Datum: " + laatsteData.datum);
 
+    doc.setFont("helvetica","bold");
     if(i === 0){
-      doc.setFont("helvetica","bold");
       doc.setFontSize(12);
       doc.text("Gevelspecificatie", 14, 58);
       doc.setFontSize(11);
       doc.text(g, 14, 66);
       var startY = 70;
     } else {
-      doc.setFont("helvetica","bold");
       doc.setFontSize(11);
       doc.text(g, 14, 58);
       var startY = 62;
@@ -408,7 +407,9 @@ async function makePdf(){
       head:[["Onderdeel","Waarde"]],
       body:[
         ["Bruto", `${format2(sec.bruto)} m²`],
-        ["Aftrek ramen en deuren", `${format2(sec.aftrek)} m²`],
+        ["Aftrek deuren", `${format2(sec.aftrekDeuren)} m²`],
+        ["Aftrek ramen", `${format2(sec.aftrekRamen)} m²`],
+        ["Aftrek totaal", `${format2(sec.aftrek)} m²`],
         ["Netto", `${format2(sec.netto)} m²`],
         ["Deuren", `${sec.deurCount}`],
         ["Ramen", `${sec.raamCount}`],
